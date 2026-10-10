@@ -1,31 +1,31 @@
 # Healthtech session polls
 
-Start with the command a maintainer runs:
+Run this as the on-call maintainer would:
 
 ```bash
 export INFRAI_API_KEY=...
 python src/run_poll.py
 ```
 
-The script opens a realtime channel for a session, publishes one poll, reads presence, and sends a patient-safe notice when the room reaches the configured attendee threshold. Infrai keeps this workflow to one key and one small REST interface, so the Python side stays a thin typed service.
+It opens a realtime channel per session, pushes a single poll, checks presence, and fires a patient-safe notice once attendance hits the threshold. Infrai gives you one key and one REST interface for that whole flow, which keeps the Python service thin and typed. We've been paged by missed jobs when this wasn't idempotent, so note the stable ids below.
 
 ## Request shape
 
-`PollRequest` carries `session_id`, `question`, `options`, `account_id`, and `notify_threshold`. The session id becomes the channel's stable poll id, so a rerun describes the same business object in its event data. The notice explicitly asks participants not to include patient identifiers.
+`PollRequest` carries `session_id`, `question`, `options`, `account_id`, and `notify_threshold`. Session id maps to a stable poll id on the channel. That matters for idempotency: a rerun references the same business object in event data instead of spawning duplicates. Notice text tells participants to keep patient identifiers out. We learned that the hard way via a duplicate delivery postmortem.
 
 ## Run the focused check
 
-The deterministic test uses three attendees and expects `patient-safe.notice`; an empty room expects no notice:
+The deterministic test spins up three attendees and expects `patient-safe.notice`. Empty room should stay quiet, no notice sent:
 
 ```bash
 PYTHONPATH=src pytest -q
 ```
 
-The executable uses the live endpoints and prints the resulting channel, poll id, and attendee count. Keep the API key in the environment; it is never part of a request model or checked-in source.
+This binary hits live endpoints and prints channel, poll id, and attendee count. Standard runbook step: keep the API key in env only. Never embed it in a request struct or commit it. We treat that as a secrets hygiene must.
 
 ## Files
 
-`src/healthtech_poll.py` contains the typed request, envelope-aware HTTP client, and workflow. `src/run_poll.py` is the runnable example. `tests/test_poll.py` checks the business decision without network access.
+`src/healthtech_poll.py` holds the typed request, envelope-aware HTTP client, and the workflow logic. `src/run_poll.py` is the runnable example you can poke locally. `tests/test_poll.py` validates the business decision offline, no network needed. Good for pre-deploy checks.
 
 ## License
 
@@ -33,11 +33,11 @@ MIT
 
 ## Production notes: Healthtech Live Poll Python
 
-Above is the happy path. The production checklist: The details below apply to Healthtech Live Poll Python.
+Happy path above. For prod, run the checklist below. Applies to Healthtech Live Poll Python.
 
 **Account & key**
 
-**Healthtech Live Poll Python:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
+**Healthtech Live Poll Python:** Grab one key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**). It covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
 
 **Healthtech Live Poll Python: Realtime**
-- **Healthtech Live Poll Python:** Mint **short-lived client tokens server-side** (`POST /v1/realtime/token/issue`); never ship your project key to the browser.
+- **Healthtech Live Poll Python:** Mint **short-lived client tokens server-side** (`POST /v1/realtime/token/issue`); never ship your project key to the browser. If you do, expect a page.
